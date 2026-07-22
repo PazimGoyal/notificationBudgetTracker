@@ -129,7 +129,38 @@ public synchronized long insertTransaction(Transaction transaction) {
  public synchronized void addCategory(String name){if(name==null||name.trim().isEmpty())return;ContentValues v=new ContentValues();v.put("name",name.trim());getWritableDatabase().insertWithOnConflict("categories",null,v,SQLiteDatabase.CONFLICT_IGNORE);}
  public synchronized void setBudget(String cat,double budget){ContentValues v=new ContentValues();v.put("monthly_budget",Math.max(0,budget));getWritableDatabase().update("categories",v,"name=?",new String[]{cat});}
  public synchronized double getBudget(String cat){try(Cursor c=getReadableDatabase().rawQuery("SELECT monthly_budget FROM categories WHERE name=?",new String[]{cat})){return c.moveToFirst()?c.getDouble(0):0;}}
- public synchronized double monthSpending(String cat,long start,long end){try(Cursor c=getReadableDatabase().rawQuery("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE category=? AND type='DEBIT' AND timestamp BETWEEN ? AND ?",new String[]{cat,String.valueOf(start),String.valueOf(end)})){return c.moveToFirst()?c.getDouble(0):0;}}
+ // public synchronized double monthSpending(String cat,long start,long end){try(Cursor c=getReadableDatabase().rawQuery("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE category=? AND type='DEBIT' AND timestamp BETWEEN ? AND ?",new String[]{cat,String.valueOf(start),String.valueOf(end)})){return c.moveToFirst()?c.getDouble(0):0;}}
+  public synchronized double monthSpending(
+        String category,
+        long start,
+        long end
+) {
+    double total = 0;
+
+    try (Cursor cursor = getReadableDatabase().rawQuery(
+            "SELECT amount, type " +
+                    "FROM transactions " +
+                    "WHERE category = ? " +
+                    "AND timestamp >= ? " +
+                    "AND timestamp <= ?",
+            new String[]{
+                    category,
+                    String.valueOf(start),
+                    String.valueOf(end)
+            }
+    )) {
+        while (cursor.moveToNext()) {
+            double amount = cursor.getDouble(0);
+            String type = cursor.getString(1);
+
+            if (isExpenseType(type)) {
+                total += Math.abs(amount);
+            }
+        }
+    }
+
+    return total;
+}
  public synchronized String findLearnedCategory(String text){try(Cursor c=getReadableDatabase().rawQuery("SELECT keyword,category FROM merchant_rules ORDER BY LENGTH(keyword) DESC",null)){while(c.moveToNext()){String k=CategoryEngine.normalize(c.getString(0));if(!k.isEmpty()&&text.contains(k))return c.getString(1);}}return null;}
  public synchronized void saveMerchantRule(String merchant,String cat){ContentValues v=new ContentValues();v.put("keyword",CategoryEngine.normalize(merchant));v.put("category",cat);getWritableDatabase().insertWithOnConflict("merchant_rules",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
  private Transaction from(Cursor c){Transaction t=new Transaction();t.id=c.getLong(0);t.timestamp=c.getLong(1);t.amount=c.getDouble(2);t.currency=c.getString(3);t.merchant=c.getString(4);t.category=c.getString(5);t.source=c.getString(6);t.type=c.getString(7);t.rawText=c.getString(8);t.manual=c.getInt(9)==1;t.fingerprint=c.getString(10);return t;}
