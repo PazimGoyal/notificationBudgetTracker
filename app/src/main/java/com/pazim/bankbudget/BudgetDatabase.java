@@ -53,7 +53,6 @@ public static boolean isExpenseType(String type) {
   for(String c:new String[]{"Bills","Groceries","Shopping","Eating Out","Fuel","Transport","Entertainment","Health","Transfers","Income","Other"}){ContentValues v=new ContentValues();v.put("name",c);db.insert("categories",null,v);}
  }
  public void onUpgrade(SQLiteDatabase db,int o,int n){}
- // public synchronized long insertTransaction(Transaction t){ContentValues v=new ContentValues();v.put("timestamp",t.timestamp);v.put("amount",t.amount);v.put("currency",t.currency);v.put("merchant",t.merchant);v.put("category",t.category);v.put("source",t.source);v.put("type",t.type);v.put("raw_text",t.rawText==null?"":t.rawText);v.put("manual",t.manual?1:0);v.put("fingerprint",t.fingerprint);return getWritableDatabase().insertWithOnConflict("transactions",null,v,SQLiteDatabase.CONFLICT_IGNORE);}
 public synchronized long insertTransaction(Transaction transaction) {
     transaction.type = normalizeType(transaction.type);
 
@@ -76,7 +75,36 @@ public synchronized long insertTransaction(Transaction transaction) {
         transaction.timestamp = System.currentTimeMillis();
     }
 
-    ContentValues values = values(transaction);
+    ContentValues values = new ContentValues();
+
+    values.put("timestamp", transaction.timestamp);
+    values.put("amount", Math.abs(transaction.amount));
+    values.put("currency", transaction.currency);
+    values.put("merchant", transaction.merchant);
+    values.put("category", transaction.category);
+    values.put(
+            "source",
+            transaction.source == null
+                    ? "Unknown"
+                    : transaction.source
+    );
+    values.put("type", normalizeType(transaction.type));
+    values.put(
+            "raw_text",
+            transaction.rawText == null
+                    ? ""
+                    : transaction.rawText
+    );
+    values.put(
+            "manual",
+            transaction.manual ? 1 : 0
+    );
+    values.put(
+            "fingerprint",
+            transaction.fingerprint == null
+                    ? "transaction-" + System.nanoTime()
+                    : transaction.fingerprint
+    );
 
     return getWritableDatabase().insertWithOnConflict(
             "transactions",
