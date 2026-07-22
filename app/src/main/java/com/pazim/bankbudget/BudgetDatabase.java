@@ -5,6 +5,22 @@ import android.database.sqlite.*;
 import java.util.*;
 public final class BudgetDatabase extends SQLiteOpenHelper {
  private static BudgetDatabase instance;
+ public synchronized List<Transaction> getAllTransactions() {
+    List<Transaction> output = new ArrayList<>();
+
+    try (Cursor cursor = getReadableDatabase().rawQuery(
+            "SELECT id,timestamp,amount,currency,merchant,category,source,type,"
+                    + "raw_text,manual,fingerprint "
+                    + "FROM transactions ORDER BY timestamp DESC",
+            null
+    )) {
+        while (cursor.moveToNext()) {
+            output.add(from(cursor));
+        }
+    }
+
+    return output;
+}
  public static String normalizeType(String type) {
     if (type == null) {
         return "EXPENSE";
