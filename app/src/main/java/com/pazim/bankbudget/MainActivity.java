@@ -3,15 +3,21 @@ package com.pazim.bankbudget;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
+import android.view.Gravity;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -29,12 +35,24 @@ public class MainActivity extends Activity {
     private static final int REQUEST_IMPORT_CSV = 4001;
     private static final int REQUEST_EXPORT_CSV = 4002;
 
+    private static final int COLOR_BACKGROUND = Color.rgb(245, 247, 250);
+    private static final int COLOR_CARD = Color.WHITE;
+    private static final int COLOR_TEXT = Color.rgb(25, 32, 44);
+    private static final int COLOR_MUTED = Color.rgb(107, 114, 128);
+    private static final int COLOR_PRIMARY = Color.rgb(31, 111, 235);
+    private static final int COLOR_EXPENSE = Color.rgb(210, 57, 57);
+    private static final int COLOR_INCOME = Color.rgb(27, 145, 90);
+    private static final int COLOR_BORDER = Color.rgb(226, 232, 240);
+
     private final NumberFormat money =
             NumberFormat.getCurrencyInstance(Locale.CANADA);
 
     private LinearLayout dashboard;
     private LinearLayout list;
-    private TextView total;
+    private TextView spentValue;
+    private TextView incomeValue;
+    private TextView netValue;
+    private TextView monthLabel;
 
     private long start;
     private long end;
@@ -42,6 +60,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
+        getWindow().setStatusBarColor(COLOR_BACKGROUND);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         build();
     }
 
@@ -53,247 +73,160 @@ public class MainActivity extends Activity {
 
     private void build() {
         ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        scrollView.setBackgroundColor(COLOR_BACKGROUND);
 
         LinearLayout root = verticalLayout();
-        root.setPadding(
-                dp(18),
-                dp(18),
-                dp(18),
-                dp(30)
-        );
-
+        root.setPadding(dp(16), dp(18), dp(16), dp(36));
         scrollView.addView(root);
 
-        TextView title = text(
-                "Bank Budget Tracker",
-                28
-        );
+        TextView title = text("Bank Budget Tracker", 29);
+        title.setTextColor(COLOR_TEXT);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         root.addView(title);
 
-        TextView privacy = text(
-                "All detected transactions remain on this phone. "
-                        + "Enable notification access for automatic detection, "
-                        + "or import a CSV statement for past transactions.",
-                14
-        );
+        monthLabel = text("", 15);
+        monthLabel.setTextColor(COLOR_MUTED);
+        monthLabel.setPadding(0, dp(2), 0, dp(14));
+        root.addView(monthLabel);
 
-        privacy.setPadding(
-                0,
-                dp(7),
-                0,
-                dp(12)
-        );
+        LinearLayout summary = horizontalLayout();
+        summary.setWeightSum(3f);
+        summary.addView(summaryCard("Spent", COLOR_EXPENSE, true), weightedParams());
+        summary.addView(space(dp(8)));
+        summary.addView(summaryCard("Income", COLOR_INCOME, false), weightedParams());
+        summary.addView(space(dp(8)));
+        summary.addView(summaryCard("Net", COLOR_PRIMARY, false), weightedParams());
+        root.addView(summary);
 
-        root.addView(privacy);
+        TextView actionsTitle = sectionTitle("Quick actions");
+        root.addView(actionsTitle);
 
-        Button notificationAccess =
-                button("Enable notification access");
+        LinearLayout actionsRowOne = horizontalLayout();
+        Button manual = actionButton("＋ Add", COLOR_PRIMARY);
+        manual.setOnClickListener(view -> transactionDialog(null));
+        actionsRowOne.addView(manual, weightedParams());
+        actionsRowOne.addView(space(dp(8)));
 
+        Button importCsv = actionButton("Import CSV", Color.rgb(75, 85, 99));
+        importCsv.setOnClickListener(view -> openCsvImporter());
+        actionsRowOne.addView(importCsv, weightedParams());
+        root.addView(actionsRowOne);
+
+        LinearLayout actionsRowTwo = horizontalLayout();
+        Button exportCsv = actionButton("Export CSV", Color.rgb(75, 85, 99));
+        exportCsv.setOnClickListener(view -> openCsvExporter());
+        actionsRowTwo.addView(exportCsv, weightedParams());
+        actionsRowTwo.addView(space(dp(8)));
+
+        Button notificationAccess = actionButton("Notifications", Color.rgb(75, 85, 99));
         notificationAccess.setOnClickListener(view -> {
             try {
-                startActivity(
-                        new Intent(
-                                Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
-                        )
-                );
+                startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
             } catch (Exception exception) {
-                Toast.makeText(
-                        this,
-                        "Open Settings and search Notification access",
-                        Toast.LENGTH_LONG
-                ).show();
+                Toast.makeText(this, "Open Settings and search Notification access", Toast.LENGTH_LONG).show();
             }
         });
+        actionsRowTwo.addView(notificationAccess, weightedParams());
+        root.addView(actionsRowTwo);
 
-        root.addView(notificationAccess);
+        Button category = outlineButton("Manage categories");
+        category.setOnClickListener(view -> addCategory());
+        LinearLayout.LayoutParams categoryParams = matchWrap();
+        categoryParams.topMargin = dp(8);
+        root.addView(category, categoryParams);
 
-        Button importCsv =
-                button("Import transactions from CSV");
-
-        importCsv.setOnClickListener(
-                view -> openCsvImporter()
-        );
-
-        root.addView(importCsv);
-
-        Button exportCsv =
-                button("Export transactions to CSV");
-
-        exportCsv.setOnClickListener(
-                view -> openCsvExporter()
-        );
-
-        root.addView(exportCsv);
-
-        Button manual =
-                button("Add transaction manually");
-
-        manual.setOnClickListener(
-                view -> transactionDialog(null)
-        );
-
-        root.addView(manual);
-
-        Button category =
-                button("Add category");
-
-        category.setOnClickListener(
-                view -> addCategory()
-        );
-
-        root.addView(category);
-
-        total = text("", 22);
-        total.setPadding(
-                0,
-                dp(18),
-                0,
-                dp(6)
-        );
-
-        root.addView(total);
-
-        root.addView(
-                text("Category budgets", 20)
-        );
-
+        root.addView(sectionTitle("Category budgets"));
         dashboard = verticalLayout();
         root.addView(dashboard);
 
-        TextView transactionHeading =
-                text("Transactions", 20);
-
-        transactionHeading.setPadding(
-                0,
-                dp(18),
-                0,
-                dp(6)
-        );
-
-        root.addView(transactionHeading);
+        LinearLayout txHeader = horizontalLayout();
+        TextView transactionHeading = sectionTitle("Recent transactions");
+        txHeader.addView(transactionHeading, weightedParams());
+        Button refresh = compactButton("Refresh");
+        refresh.setOnClickListener(view -> refresh());
+        txHeader.addView(refresh);
+        root.addView(txHeader);
 
         list = verticalLayout();
         root.addView(list);
 
-        Button refresh =
-                button("Refresh");
-
-        refresh.setOnClickListener(
-                view -> refresh()
-        );
-
-        root.addView(refresh);
-
         setContentView(scrollView);
     }
 
+    private LinearLayout summaryCard(String label, int accent, boolean spent) {
+        LinearLayout card = verticalLayout();
+        card.setPadding(dp(12), dp(14), dp(12), dp(14));
+        card.setBackground(roundedBackground(COLOR_CARD, dp(16), COLOR_BORDER));
+
+        TextView labelView = text(label, 13);
+        labelView.setTextColor(COLOR_MUTED);
+        card.addView(labelView);
+
+        TextView value = text("$0.00", 19);
+        value.setTextColor(accent);
+        value.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        value.setPadding(0, dp(5), 0, 0);
+        card.addView(value);
+
+        if (spent) {
+            spentValue = value;
+        } else if ("Income".equals(label)) {
+            incomeValue = value;
+        } else {
+            netValue = value;
+        }
+        return card;
+    }
+
     private void openCsvImporter() {
-        Intent intent = new Intent(
-                Intent.ACTION_OPEN_DOCUMENT
-        );
-
-        intent.addCategory(
-                Intent.CATEGORY_OPENABLE
-        );
-
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("text/*");
-
-        startActivityForResult(
-                intent,
-                REQUEST_IMPORT_CSV
-        );
+        startActivityForResult(intent, REQUEST_IMPORT_CSV);
     }
 
     private void openCsvExporter() {
-        Intent intent = new Intent(
-                Intent.ACTION_CREATE_DOCUMENT
-        );
-
-        intent.addCategory(
-                Intent.CATEGORY_OPENABLE
-        );
-
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("text/csv");
 
-        String fileName =
-                "BankBudgetTransactions_"
-                        + new SimpleDateFormat(
-                                "yyyy-MM-dd",
-                                Locale.CANADA
-                        ).format(
-                                System.currentTimeMillis()
-                        )
-                        + ".csv";
+        String fileName = "BankBudgetTransactions_"
+                + new SimpleDateFormat("yyyy-MM-dd", Locale.CANADA)
+                .format(System.currentTimeMillis())
+                + ".csv";
 
-        intent.putExtra(
-                Intent.EXTRA_TITLE,
-                fileName
-        );
-
-        startActivityForResult(
-                intent,
-                REQUEST_EXPORT_CSV
-        );
+        intent.putExtra(Intent.EXTRA_TITLE, fileName);
+        startActivityForResult(intent, REQUEST_EXPORT_CSV);
     }
 
     @Override
-    protected void onActivityResult(
-            int requestCode,
-            int resultCode,
-            Intent data
-    ) {
-        super.onActivityResult(
-                requestCode,
-                resultCode,
-                data
-        );
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
 
-        if (
-                resultCode != RESULT_OK
-                        || data == null
-                        || data.getData() == null
-        ) {
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
             return;
         }
 
         Uri uri = data.getData();
 
         if (requestCode == REQUEST_IMPORT_CSV) {
-            CsvManager.ImportResult result =
-                    CsvManager.importTransactions(
-                            this,
-                            uri
-                    );
-
+            CsvManager.ImportResult result = CsvManager.importTransactions(this, uri);
             new AlertDialog.Builder(this)
                     .setTitle("CSV import complete")
                     .setMessage(result.summary())
                     .setPositiveButton("OK", null)
                     .show();
-
             refresh();
             return;
         }
 
         if (requestCode == REQUEST_EXPORT_CSV) {
             try {
-                CsvManager.exportTransactions(
-                        this,
-                        uri
-                );
-
-                Toast.makeText(
-                        this,
-                        "CSV export completed",
-                        Toast.LENGTH_LONG
-                ).show();
+                CsvManager.exportTransactions(this, uri);
+                Toast.makeText(this, "CSV export completed", Toast.LENGTH_LONG).show();
             } catch (Exception exception) {
-                Toast.makeText(
-                        this,
-                        "Export failed: "
-                                + exception.getMessage(),
-                        Toast.LENGTH_LONG
-                ).show();
+                Toast.makeText(this, "Export failed: " + exception.getMessage(), Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -301,151 +234,175 @@ public class MainActivity extends Activity {
     private void refresh() {
         calculateRange();
 
-        BudgetDatabase database =
-                BudgetDatabase.get(this);
-
-        List<String> categories =
-                database.getCategories();
-
-        List<Transaction> transactions =
-                database.getTransactions(start, end);
+        BudgetDatabase database = BudgetDatabase.get(this);
+        List<String> categories = database.getCategories();
+        List<Transaction> transactions = database.getTransactions(start, end);
 
         double expenseTotal = 0;
         double incomeTotal = 0;
+        double totalBudget = 0;
 
         for (Transaction transaction : transactions) {
-            String normalizedType =
-                    BudgetDatabase.normalizeType(
-                            transaction.type
-                    );
-
+            String normalizedType = BudgetDatabase.normalizeType(transaction.type);
             if ("EXPENSE".equals(normalizedType)) {
-                expenseTotal += Math.abs(
-                        transaction.amount
-                );
+                expenseTotal += Math.abs(transaction.amount);
             } else if ("INCOME".equals(normalizedType)) {
-                incomeTotal += Math.abs(
-                        transaction.amount
-                );
+                incomeTotal += Math.abs(transaction.amount);
             }
         }
 
-        total.setText(
-                "Spent: " + money.format(expenseTotal)
-                        + "\nIncome: " + money.format(incomeTotal)
-                        + "\nNet: "
-                        + money.format(
-                                incomeTotal - expenseTotal
-                        )
-        );
+        for (String category : categories) {
+            if (!"Income".equals(category) && !"Transfers".equals(category)) {
+                totalBudget += database.getBudget(category);
+            }
+        }
+
+        monthLabel.setText(new SimpleDateFormat("MMMM yyyy", Locale.CANADA).format(start));
+        spentValue.setText(money.format(expenseTotal));
+        incomeValue.setText(money.format(incomeTotal));
+        netValue.setText(money.format(incomeTotal - expenseTotal));
+        netValue.setTextColor(incomeTotal - expenseTotal >= 0 ? COLOR_INCOME : COLOR_EXPENSE);
 
         dashboard.removeAllViews();
 
-        for (String category : categories) {
-            if ("Income".equals(category)
-                    || "Transfers".equals(category)) {
-                continue;
+        if (categories.isEmpty()) {
+            dashboard.addView(emptyCard("No categories yet."));
+        } else {
+            for (String category : categories) {
+                if ("Income".equals(category) || "Transfers".equals(category)) {
+                    continue;
+                }
+
+                double spent = database.monthSpending(category, start, end);
+                double budget = database.getBudget(category);
+                dashboard.addView(categoryCard(category, spent, budget));
             }
-
-            double spent =
-                    database.monthSpending(
-                            category,
-                            start,
-                            end
-                    );
-
-            double budget =
-                    database.getBudget(category);
-
-            String budgetText =
-                    budget > 0
-                            ? money.format(spent)
-                            + " / "
-                            + money.format(budget)
-                            : money.format(spent)
-                            + " / no budget";
-
-            Button row =
-                    button(
-                            category
-                                    + ": "
-                                    + budgetText
-                    );
-
-            row.setAllCaps(false);
-
-            row.setOnClickListener(
-                    view -> budgetDialog(
-                            category,
-                            budget
-                    )
-            );
-
-            dashboard.addView(row);
         }
 
         list.removeAllViews();
 
         if (transactions.isEmpty()) {
-            list.addView(
-                    text(
-                            "No transactions detected this month.",
-                            15
-                    )
-            );
-
+            list.addView(emptyCard("No transactions detected this month."));
             return;
         }
 
-        SimpleDateFormat dateFormat =
-                new SimpleDateFormat(
-                        "MMM d, h:mm a",
-                        Locale.CANADA
-                );
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d, h:mm a", Locale.CANADA);
 
         for (Transaction transaction : transactions) {
-            String normalizedType =
-                    BudgetDatabase.normalizeType(
-                            transaction.type
-                    );
-
-            String sign =
-                    "INCOME".equals(normalizedType)
-                            ? "+"
-                            : "EXPENSE".equals(normalizedType)
-                            ? "-"
-                            : "";
-
-            Button item =
-                    button(
-                            sign
-                                    + money.format(
-                                    Math.abs(
-                                            transaction.amount
-                                    )
-                            )
-                                    + " • "
-                                    + transaction.merchant
-                                    + "\n"
-                                    + transaction.category
-                                    + " • "
-                                    + transaction.source
-                                    + " • "
-                                    + dateFormat.format(
-                                    transaction.timestamp
-                            )
-                    );
-
-            item.setAllCaps(false);
-
-            item.setOnClickListener(
-                    view -> transactionDialog(
-                            transaction
-                    )
-            );
-
-            list.addView(item);
+            list.addView(transactionCard(transaction, dateFormat));
         }
+    }
+
+    private View categoryCard(String category, double spent, double budget) {
+        LinearLayout card = verticalLayout();
+        card.setPadding(dp(14), dp(13), dp(14), dp(13));
+        card.setBackground(roundedBackground(COLOR_CARD, dp(16), COLOR_BORDER));
+
+        LinearLayout.LayoutParams params = matchWrap();
+        params.bottomMargin = dp(10);
+        card.setLayoutParams(params);
+
+        LinearLayout top = horizontalLayout();
+        TextView name = text(category, 16);
+        name.setTextColor(COLOR_TEXT);
+        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        top.addView(name, weightedParams());
+
+        TextView amount = text(
+                budget > 0
+                        ? money.format(spent) + " / " + money.format(budget)
+                        : money.format(spent),
+                14
+        );
+        amount.setTextColor(budget > 0 && spent > budget ? COLOR_EXPENSE : COLOR_MUTED);
+        top.addView(amount);
+        card.addView(top);
+
+        if (budget > 0) {
+            ProgressBar progress = new ProgressBar(
+                    this,
+                    null,
+                    android.R.attr.progressBarStyleHorizontal
+            );
+            progress.setMax(1000);
+            int value = (int) Math.min(1000, Math.round((spent / budget) * 1000));
+            progress.setProgress(value);
+            LinearLayout.LayoutParams progressParams = matchWrap();
+            progressParams.topMargin = dp(10);
+            progressParams.height = dp(7);
+            card.addView(progress, progressParams);
+
+            TextView remaining = text(
+                    spent <= budget
+                            ? money.format(budget - spent) + " remaining"
+                            : money.format(spent - budget) + " over budget",
+                    12
+            );
+            remaining.setTextColor(spent <= budget ? COLOR_MUTED : COLOR_EXPENSE);
+            remaining.setPadding(0, dp(7), 0, 0);
+            card.addView(remaining);
+        } else {
+            TextView noBudget = text("Tap to set a monthly budget", 12);
+            noBudget.setTextColor(COLOR_MUTED);
+            noBudget.setPadding(0, dp(7), 0, 0);
+            card.addView(noBudget);
+        }
+
+        card.setOnClickListener(view -> budgetDialog(category, budget));
+        return card;
+    }
+
+    private View transactionCard(Transaction transaction, SimpleDateFormat dateFormat) {
+        LinearLayout card = horizontalLayout();
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.setBackground(roundedBackground(COLOR_CARD, dp(15), COLOR_BORDER));
+
+        LinearLayout.LayoutParams cardParams = matchWrap();
+        cardParams.bottomMargin = dp(9);
+        card.setLayoutParams(cardParams);
+
+        String normalizedType = BudgetDatabase.normalizeType(transaction.type);
+        boolean income = "INCOME".equals(normalizedType);
+        boolean transfer = "TRANSFER".equals(normalizedType);
+
+        TextView icon = text(income ? "↓" : transfer ? "↔" : "↑", 20);
+        icon.setGravity(Gravity.CENTER);
+        icon.setTextColor(income ? COLOR_INCOME : transfer ? COLOR_PRIMARY : COLOR_EXPENSE);
+        icon.setBackground(circleBackground(income ? 0xFFE8F7EF : transfer ? 0xFFEAF2FF : 0xFFFCECEC));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        iconParams.rightMargin = dp(12);
+        card.addView(icon, iconParams);
+
+        LinearLayout details = verticalLayout();
+        TextView merchant = text(transaction.merchant, 16);
+        merchant.setTextColor(COLOR_TEXT);
+        merchant.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        merchant.setMaxLines(1);
+        details.addView(merchant);
+
+        TextView meta = text(
+                transaction.category + " • " + transaction.source
+                        + "
+" + dateFormat.format(transaction.timestamp),
+                12
+        );
+        meta.setTextColor(COLOR_MUTED);
+        meta.setPadding(0, dp(3), 0, 0);
+        details.addView(meta);
+        card.addView(details, weightedParams());
+
+        TextView amount = text(
+                (income ? "+" : transfer ? "" : "-")
+                        + money.format(Math.abs(transaction.amount)),
+                15
+        );
+        amount.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        amount.setTextColor(income ? COLOR_INCOME : transfer ? COLOR_PRIMARY : COLOR_EXPENSE);
+        card.addView(amount);
+
+        card.setOnClickListener(view -> transactionDialog(transaction));
+        return card;
     }
 
     private void transactionDialog(
@@ -813,104 +770,138 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout verticalLayout() {
-        LinearLayout layout =
-                new LinearLayout(this);
-
-        layout.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
         return layout;
     }
 
-    private TextView text(
-            String value,
-            float size
-    ) {
-        TextView text =
-                new TextView(this);
+    private LinearLayout horizontalLayout() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.HORIZONTAL);
+        layout.setGravity(Gravity.CENTER_VERTICAL);
+        return layout;
+    }
 
-        text.setText(value);
-        text.setTextSize(size);
+    private TextView sectionTitle(String value) {
+        TextView view = text(value, 20);
+        view.setTextColor(COLOR_TEXT);
+        view.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        view.setPadding(0, dp(22), 0, dp(10));
+        return view;
+    }
 
-        return text;
+    private TextView text(String value, float size) {
+        TextView view = new TextView(this);
+        view.setText(value);
+        view.setTextSize(size);
+        view.setTextColor(COLOR_TEXT);
+        return view;
     }
 
     private Button button(String value) {
-        Button button =
-                new Button(this);
-
+        Button button = new Button(this);
         button.setText(value);
-
+        button.setAllCaps(false);
         return button;
     }
 
-    private EditText input(
-            String hint,
-            int type
-    ) {
-        EditText input =
-                new EditText(this);
+    private Button actionButton(String value, int backgroundColor) {
+        Button button = button(value);
+        button.setTextColor(Color.WHITE);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setBackground(roundedBackground(backgroundColor, dp(13), backgroundColor));
+        button.setMinHeight(dp(48));
+        return button;
+    }
 
+    private Button outlineButton(String value) {
+        Button button = button(value);
+        button.setTextColor(COLOR_PRIMARY);
+        button.setBackground(roundedBackground(Color.TRANSPARENT, dp(13), COLOR_PRIMARY));
+        button.setMinHeight(dp(46));
+        return button;
+    }
+
+    private Button compactButton(String value) {
+        Button button = button(value);
+        button.setTextColor(COLOR_PRIMARY);
+        button.setTextSize(13);
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(10), dp(5), dp(10), dp(5));
+        return button;
+    }
+
+    private View emptyCard(String message) {
+        TextView empty = text(message, 14);
+        empty.setTextColor(COLOR_MUTED);
+        empty.setGravity(Gravity.CENTER);
+        empty.setPadding(dp(20), dp(24), dp(20), dp(24));
+        empty.setBackground(roundedBackground(COLOR_CARD, dp(16), COLOR_BORDER));
+        return empty;
+    }
+
+    private EditText input(String hint, int type) {
+        EditText input = new EditText(this);
         input.setHint(hint);
         input.setInputType(type);
-
-        input.setPadding(
-                dp(8),
-                dp(8),
-                dp(8),
-                dp(8)
-        );
-
+        input.setPadding(dp(10), dp(10), dp(10), dp(10));
         return input;
     }
 
-    private Spinner spinner(
-            List<String> values
-    ) {
-        Spinner spinner =
-                new Spinner(this);
-
-        spinner.setAdapter(
-                new ArrayAdapter<>(
-                        this,
-                        android.R.layout
-                                .simple_spinner_dropdown_item,
-                        values
-                )
-        );
-
+    private Spinner spinner(List<String> values) {
+        Spinner spinner = new Spinner(this);
+        spinner.setAdapter(new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                values
+        ));
         return spinner;
     }
 
-    private void select(
-            Spinner spinner,
-            String value
-    ) {
-        for (
-                int index = 0;
-                index < spinner.getCount();
-                index++
-        ) {
-            if (value.equals(
-                    String.valueOf(
-                            spinner.getItemAtPosition(
-                                    index
-                            )
-                    )
-            )) {
+    private void select(Spinner spinner, String value) {
+        for (int index = 0; index < spinner.getCount(); index++) {
+            if (value.equals(String.valueOf(spinner.getItemAtPosition(index)))) {
                 spinner.setSelection(index);
                 return;
             }
         }
     }
 
-    private int dp(int value) {
-        return (int) (
-                value
-                        * getResources()
-                        .getDisplayMetrics()
-                        .density
+    private LinearLayout.LayoutParams weightedParams() {
+        return new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+    }
+
+    private LinearLayout.LayoutParams matchWrap() {
+        return new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
         );
+    }
+
+    private View space(int width) {
+        View space = new View(this);
+        space.setLayoutParams(new LinearLayout.LayoutParams(width, 1));
+        return space;
+    }
+
+    private GradientDrawable roundedBackground(int fillColor, int radius, int strokeColor) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(fillColor);
+        drawable.setCornerRadius(radius);
+        drawable.setStroke(dp(1), strokeColor);
+        return drawable;
+    }
+
+    private GradientDrawable circleBackground(int fillColor) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.OVAL);
+        drawable.setColor(fillColor);
+        return drawable;
+    }
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density);
     }
 }
