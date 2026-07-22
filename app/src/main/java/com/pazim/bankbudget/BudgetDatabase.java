@@ -5,6 +5,45 @@ import android.database.sqlite.*;
 import java.util.*;
 public final class BudgetDatabase extends SQLiteOpenHelper {
  private static BudgetDatabase instance;
+ public static String normalizeType(String type) {
+    if (type == null) {
+        return "EXPENSE";
+    }
+
+    String value = type
+            .trim()
+            .toUpperCase(Locale.CANADA);
+
+    if (value.equals("DEBIT")
+            || value.equals("PURCHASE")
+            || value.equals("SPENT")
+            || value.equals("CHARGE")
+            || value.equals("PAYMENT")
+            || value.equals("WITHDRAWAL")
+            || value.equals("EXPENSE")) {
+        return "EXPENSE";
+    }
+
+    if (value.equals("CREDIT")
+            || value.equals("REFUND")
+            || value.equals("DEPOSIT")
+            || value.equals("PAYROLL")
+            || value.equals("INCOME")) {
+        return "INCOME";
+    }
+
+    if (value.equals("TRANSFER")
+            || value.equals("E-TRANSFER")
+            || value.equals("E TRANSFER")) {
+        return "TRANSFER";
+    }
+
+    return "EXPENSE";
+}
+
+public static boolean isExpenseType(String type) {
+    return "EXPENSE".equals(normalizeType(type));
+}
  public static synchronized BudgetDatabase get(Context c){if(instance==null)instance=new BudgetDatabase(c.getApplicationContext());return instance;}
  private BudgetDatabase(Context c){super(c,"bank_budget.db",null,1);}
  public void onCreate(SQLiteDatabase db){
