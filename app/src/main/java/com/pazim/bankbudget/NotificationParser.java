@@ -4,7 +4,26 @@ import java.util.*;
 import java.util.regex.*;
 public final class NotificationParser {
  private static final Pattern[] AMOUNTS={Pattern.compile("(?i)(?:CAD|C\\$|\\$)\\s*([0-9][0-9,]*(?:\\.\\d{1,2})?)"),Pattern.compile("(?i)([0-9][0-9,]*(?:\\.\\d{1,2})?)\\s*(?:CAD|C\\$)")};
- private static final String[] WORDS={"PURCHASE","SPENT","CHARGE","TRANSACTION","PAYMENT","DEBIT","WITHDRAWAL","REFUND","DEPOSIT","CREDIT","TRANSFER","E-TRANSFER","CARD"};
+ // private static final String[] WORDS={"PURCHASE","SPENT","CHARGE","TRANSACTION","PAYMENT","DEBIT","WITHDRAWAL","REFUND","DEPOSIT","CREDIT","TRANSFER","E-TRANSFER","CARD"};
+private static final String[] WORDS = new String[]{
+        "AUTHORIZATION",
+        "PURCHASE",
+        "SPENT",
+        "CHARGE",
+        "CHARGED",
+        "TRANSACTION",
+        "PAYMENT",
+        "DEBIT",
+        "WITHDRAWAL",
+        "REFUND",
+        "DEPOSIT",
+        "CREDIT",
+        "TRANSFER",
+        "E-TRANSFER",
+        "E TRANSFER",
+        "INTERAC",
+        "CARD"
+};
  private NotificationParser(){}
  public static boolean supportedSource(String pkg,String label){
   String v=((pkg==null?"":pkg)+" "+(label==null?"":label)).toLowerCase(Locale.CANADA);
@@ -18,7 +37,55 @@ public final class NotificationParser {
   tx.source=source(pkg,label); tx.type=type(norm); tx.rawText=raw; tx.manual=false; tx.merchant=merchant(raw,norm); tx.fingerprint=fingerprint(tx); return tx;
  }
  private static Double amount(String raw){for(Pattern p:AMOUNTS){Matcher m=p.matcher(raw);if(m.find())try{return Double.parseDouble(m.group(1).replace(",",""));}catch(Exception ignored){}}return null;}
- private static String type(String n){if(any(n,"REFUND","CREDIT","DEPOSIT","PAYROLL"))return "CREDIT";if(any(n,"TRANSFER","E TRANSFER","INTERAC"))return "TRANSFER";return "DEBIT";}
+ // private static String type(String n){if(any(n,"REFUND","CREDIT","DEPOSIT","PAYROLL"))return "CREDIT";if(any(n,"TRANSFER","E TRANSFER","INTERAC"))return "TRANSFER";return "DEBIT";}
+private static String type(String normalized) {
+
+    // Money sent between accounts.
+    if (containsAny(
+            normalized,
+            "INTERAC E TRANSFER SENT",
+            "E TRANSFER SENT",
+            "TRANSFER SENT",
+            "INTERAC SENT"
+    )) {
+        return "TRANSFER";
+    }
+
+    // Credit-card authorizations and purchases are expenses.
+    // This must be checked before looking for the word CREDIT.
+    if (containsAny(
+            normalized,
+            "AUTHORIZATION ON YOUR CREDIT ACCOUNT",
+            "THERE WAS AN AUTHORIZATION FOR",
+            "PURCHASE",
+            "SPENT",
+            "CHARGED",
+            "CHARGE",
+            "PAYMENT",
+            "DEBIT",
+            "WITHDRAWAL",
+            "PAID"
+    )) {
+        return "EXPENSE";
+    }
+
+    // Actual incoming money.
+    if (containsAny(
+            normalized,
+            "REFUND",
+            "PAYROLL",
+            "SALARY",
+            "DEPOSIT RECEIVED",
+            "CREDIT RECEIVED",
+            "MONEY RECEIVED",
+            "E TRANSFER RECEIVED",
+            "INTERAC E TRANSFER RECEIVED"
+    )) {
+        return "INCOME";
+    }
+
+    return "EXPENSE";
+}
  private static String merchant(String raw,String norm){
   String u=raw.toUpperCase(Locale.CANADA);
   for(String marker:new String[]{" AT "," FROM "," TO "," MERCHANT "}){int i=u.indexOf(marker);if(i>=0){String m=raw.substring(i+marker.length()).replaceAll("(?i)\\b(?:ON|USING|WITH|CARD ENDING|CARD)\\b.*$","").replaceAll("[\\r\\n]+"," ").trim();if(!m.isEmpty())return shortv(m,70);}}
