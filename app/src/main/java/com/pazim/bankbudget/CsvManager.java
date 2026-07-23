@@ -12,7 +12,6 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -52,7 +51,7 @@ public final class CsvManager {
             String headerLine = reader.readLine();
 
             if (headerLine == null) {
-                result.errors.add("The CSV file is empty.");
+                result.errors.add("CSV file is empty.");
                 return result;
             }
 
@@ -71,11 +70,8 @@ public final class CsvManager {
 
                 try {
                     List<String> row = parseCsvLine(line);
-                    Transaction transaction = transactionFromRow(
-                            context,
-                            indexes,
-                            row
-                    );
+                    Transaction transaction =
+                            transactionFromRow(context, indexes, row);
 
                     if (transaction == null) {
                         result.skipped++;
@@ -89,13 +85,15 @@ public final class CsvManager {
                         continue;
                     }
 
-                    long inserted = database.insertTransaction(transaction);
+                    long inserted =
+                            database.insertTransaction(transaction);
 
                     if (inserted == -1) {
                         result.duplicates++;
                     } else {
                         result.imported++;
                     }
+
                 } catch (Exception exception) {
                     result.skipped++;
 
@@ -107,6 +105,7 @@ public final class CsvManager {
                     }
                 }
             }
+
         } catch (Exception exception) {
             result.errors.add(safeMessage(exception));
         }
@@ -116,15 +115,12 @@ public final class CsvManager {
 
     public static void exportTransactions(Context context, Uri uri)
             throws Exception {
-        BudgetDatabase database = BudgetDatabase.get(context);
-        List<Transaction> transactions = database.getAllTransactions();
+        List<Transaction> transactions =
+                BudgetDatabase.get(context).getAllTransactions();
 
         try (
                 OutputStream outputStream =
-                        context.getContentResolver().openOutputStream(
-                                uri,
-                                "wt"
-                        );
+                        context.getContentResolver().openOutputStream(uri, "wt");
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(
                                 outputStream,
@@ -157,22 +153,18 @@ public final class CsvManager {
                                 Math.abs(transaction.amount)
                         )
                 );
-                values.add(orDefault(transaction.currency, "CAD"));
-                values.add(orDefault(transaction.merchant, ""));
-                values.add(orDefault(transaction.category, "Other"));
-                values.add(orDefault(transaction.source, ""));
+                values.add(defaultValue(transaction.currency, "CAD"));
+                values.add(defaultValue(transaction.merchant, ""));
+                values.add(defaultValue(transaction.category, "Other"));
+                values.add(defaultValue(transaction.source, ""));
                 values.add(
-                        BudgetDatabase.normalizeType(
-                                transaction.type
-                        )
+                        BudgetDatabase.normalizeType(transaction.type)
                 );
-                values.add(orDefault(transaction.rawText, ""));
+                values.add(defaultValue(transaction.rawText, ""));
 
                 writer.write(toCsvLine(values));
                 writer.newLine();
             }
-
-            writer.flush();
         }
     }
 
@@ -202,40 +194,11 @@ public final class CsvManager {
                 "name"
         );
 
-        String category = first(
-                indexes,
-                row,
-                "category"
-        );
-
-        String currency = first(
-                indexes,
-                row,
-                "currency"
-        );
-
-        String source = first(
-                indexes,
-                row,
-                "source",
-                "account",
-                "bank"
-        );
-
-        String type = first(
-                indexes,
-                row,
-                "type",
-                "transaction type"
-        );
-
-        String notes = first(
-                indexes,
-                row,
-                "notes",
-                "raw text",
-                "raw_text"
-        );
+        String category = first(indexes, row, "category");
+        String currency = first(indexes, row, "currency");
+        String source = first(indexes, row, "source", "account", "bank");
+        String type = first(indexes, row, "type", "transaction type");
+        String notes = first(indexes, row, "notes", "raw text", "raw_text");
 
         String debit = first(
                 indexes,
@@ -260,19 +223,21 @@ public final class CsvManager {
                 "transaction amount"
         );
 
-        double amount;
-        String normalizedType;
-
         Double debitAmount = parseAmount(debit);
         Double creditAmount = parseAmount(credit);
         Double genericAmount = parseAmount(amountValue);
 
+        double amount;
+        String normalizedType;
+
         if (debitAmount != null && debitAmount != 0) {
             amount = Math.abs(debitAmount);
             normalizedType = "EXPENSE";
+
         } else if (creditAmount != null && creditAmount != 0) {
             amount = Math.abs(creditAmount);
             normalizedType = "INCOME";
+
         } else if (genericAmount != null && genericAmount != 0) {
             amount = Math.abs(genericAmount);
 
@@ -280,11 +245,21 @@ public final class CsvManager {
                 normalizedType =
                         BudgetDatabase.normalizeType(type);
             } else {
-                normalizedType =
-                        genericAmount < 0
-                                ? "EXPENSE"
-                                : "INCOME";
+                String descriptionUpper =
+                        description == null
+                                ? ""
+                                : description.toUpperCase(Locale.CANADA);
+
+                if (descriptionUpper.contains("PAYROLL")
+                        || descriptionUpper.contains("SALARY")
+                        || descriptionUpper.contains("DEPOSIT")
+                        || descriptionUpper.contains("REFUND")) {
+                    normalizedType = "INCOME";
+                } else {
+                    normalizedType = "EXPENSE";
+                }
             }
+
         } else {
             return null;
         }
@@ -293,10 +268,8 @@ public final class CsvManager {
             description = "Imported transaction";
         }
 
-        long timestamp = parseDate(dateValue);
-
         Transaction transaction = new Transaction();
-        transaction.timestamp = timestamp;
+        transaction.timestamp = parseDate(dateValue);
         transaction.amount = amount;
         transaction.currency =
                 currency == null || currency.trim().isEmpty()
@@ -315,18 +288,19 @@ public final class CsvManager {
         transaction.manual = true;
 
         if (category == null || category.trim().isEmpty()) {
-            transaction.category = CategoryEngine.categorize(
-                    context,
-                    transaction.merchant,
-                    transaction.rawText
-            );
+            transaction.category =
+                    CategoryEngine.categorize(
+                            context,
+                            transaction.merchant,
+                            transaction.rawText
+                    );
         } else {
             transaction.category = category.trim();
         }
 
         transaction.fingerprint =
                 "csv-"
-                        + timestamp
+                        + transaction.timestamp
                         + "-"
                         + String.format(
                                 Locale.CANADA,
@@ -367,6 +341,7 @@ public final class CsvManager {
                                 pattern,
                                 Locale.CANADA
                         );
+
                 format.setLenient(false);
 
                 Date date = format.parse(cleaned);
@@ -411,16 +386,16 @@ public final class CsvManager {
     private static Map<String, Integer> buildHeaderIndex(
             List<String> headers
     ) {
-        Map<String, Integer> result = new HashMap<>();
+        Map<String, Integer> output = new HashMap<>();
 
         for (int index = 0; index < headers.size(); index++) {
-            result.put(
+            output.put(
                     normalizeHeader(headers.get(index)),
                     index
             );
         }
 
-        return result;
+        return output;
     }
 
     private static String first(
@@ -466,19 +441,19 @@ public final class CsvManager {
             char character = line.charAt(index);
 
             if (character == '"') {
-                if (
-                        insideQuotes
-                                && index + 1 < line.length()
-                                && line.charAt(index + 1) == '"'
-                ) {
+                if (insideQuotes
+                        && index + 1 < line.length()
+                        && line.charAt(index + 1) == '"') {
                     current.append('"');
                     index++;
                 } else {
                     insideQuotes = !insideQuotes;
                 }
+
             } else if (character == ',' && !insideQuotes) {
                 values.add(current.toString());
                 current.setLength(0);
+
             } else {
                 current.append(character);
             }
@@ -489,11 +464,11 @@ public final class CsvManager {
     }
 
     private static String toCsvLine(List<String> values) {
-        StringBuilder result = new StringBuilder();
+        StringBuilder output = new StringBuilder();
 
         for (int index = 0; index < values.size(); index++) {
             if (index > 0) {
-                result.append(',');
+                output.append(',');
             }
 
             String value = values.get(index);
@@ -509,17 +484,15 @@ public final class CsvManager {
                             || value.contains("\r");
 
             if (quote) {
-                result.append('"');
-                result.append(
-                        value.replace("\"", "\"\"")
-                );
-                result.append('"');
+                output.append('"');
+                output.append(value.replace("\"", "\"\""));
+                output.append('"');
             } else {
-                result.append(value);
+                output.append(value);
             }
         }
 
-        return result.toString();
+        return output.toString();
     }
 
     private static String removeBom(String value) {
@@ -530,11 +503,11 @@ public final class CsvManager {
         return value;
     }
 
-    private static String orDefault(
+    private static String defaultValue(
             String value,
-            String defaultValue
+            String fallback
     ) {
-        return value == null ? defaultValue : value;
+        return value == null ? fallback : value;
     }
 
     private static String safeMessage(Exception exception) {
