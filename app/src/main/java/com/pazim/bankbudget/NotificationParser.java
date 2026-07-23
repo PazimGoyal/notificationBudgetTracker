@@ -41,7 +41,7 @@ private static final String[] WORDS = new String[]{
 private static String type(String normalized) {
 
     // Money sent between accounts.
-    if (containsAny(
+    if (any(
             normalized,
             "INTERAC E TRANSFER SENT",
             "E TRANSFER SENT",
@@ -53,7 +53,7 @@ private static String type(String normalized) {
 
     // Credit-card authorizations and purchases are expenses.
     // This must be checked before looking for the word CREDIT.
-    if (containsAny(
+    if (any(
             normalized,
             "AUTHORIZATION ON YOUR CREDIT ACCOUNT",
             "THERE WAS AN AUTHORIZATION FOR",
@@ -70,7 +70,7 @@ private static String type(String normalized) {
     }
 
     // Actual incoming money.
-    if (containsAny(
+    if (any(
             normalized,
             "REFUND",
             "PAYROLL",
